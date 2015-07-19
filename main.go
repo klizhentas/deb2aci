@@ -18,11 +18,21 @@ func main() {
 		return
 	}
 	pkg, manifest := os.Args[1], os.Args[2]
+
 	log.Printf("deb2aci: will convert package %v", pkg)
 	image, err := filepath.Abs(fmt.Sprintf("./%v.aci", pkg))
 	if err != nil {
 		log.Fatalf("err: %v", err)
 	}
+
+	manifest, err = filepath.Abs(os.Args[2])
+	if err != nil {
+		log.Fatalf(err.Error())
+	}
+	if _, err := os.Stat(manifest); err != nil {
+		log.Fatalf(err.Error())
+	}
+
 	if err := convert(pkg, image, manifest); err != nil {
 		log.Fatalf("deb2aci: ERROR: %v", err)
 	}
