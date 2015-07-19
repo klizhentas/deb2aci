@@ -10,36 +10,46 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+
+	"github.com/klizhentas/deb2aci/Godeps/_workspace/src/github.com/appc/spec/schema"
+	"github.com/klizhentas/deb2aci/Godeps/_workspace/src/github.com/appc/spec/schema/types"
 )
 
 func main() {
-	if len(os.Args) < 2 {
+	if len(os.Args) < 3 {
 		log.Fatalf("deb2aci: package manifest")
 		return
 	}
-	pkg, manifest := os.Args[1], os.Args[2]
+	pkg := os.Args[1]
 
 	log.Printf("deb2aci: will convert package %v", pkg)
 	image, err := filepath.Abs(fmt.Sprintf("./%v.aci", pkg))
 	if err != nil {
 		log.Fatalf("err: %v", err)
 	}
-
-	manifest, err = filepath.Abs(os.Args[2])
+	manifest, err := readManifest(os.Args[2])
 	if err != nil {
 		log.Fatalf(err.Error())
 	}
-	if _, err := os.Stat(manifest); err != nil {
-		log.Fatalf(err.Error())
-	}
-
 	if err := convert(pkg, image, manifest); err != nil {
 		log.Fatalf("deb2aci: ERROR: %v", err)
 	}
 	log.Printf("deb2aci: here you go: %v", image)
 }
 
-func convert(pkg, image, manifest string) error {
+func readManifest(path string) (*schema.ImageManifest, error) {
+	b, err := ioutil.ReadFile(path)
+	if err != nil {
+		return nil, errorf(err.Error())
+	}
+	i := schema.ImageManifest{}
+	if err := i.UnmarshalJSON(b); err != nil {
+		return nil, errorf(err.Error())
+	}
+	return &i, nil
+}
+
+func convert(pkg, image string, manifest *schema.ImageManifest) error {
 	if pkg == "" || image == "" {
 		return errorf("image name and package name can not be empty")
 	}
@@ -54,7 +64,7 @@ func convert(pkg, image, manifest string) error {
 		}
 	}()
 
-	fs := make(map[string]string)
+	fs := make(map[string]*deb)
 
 	if err := download(pkg, dir, fs); err != nil {
 		return err
@@ -62,21 +72,31 @@ func convert(pkg, image, manifest string) error {
 	return createACI(dir, fs, image, manifest)
 }
 
-func createACI(dir string, fs map[string]string, image, manifest string) error {
+func createACI(dir string, fs map[string]*deb, image string, m *schema.ImageManifest) error {
 	idir, err := ioutil.TempDir(dir, "image")
 	if err != nil {
 		return errorf(err.Error())
 	}
 	rootfs := filepath.Join(idir, "rootfs")
 	os.MkdirAll(rootfs, 0755)
-	for _, path := range fs {
-		err := run(exec.Command("cp", "-a", path+"/.", rootfs))
+
+	for _, d := range fs {
+		err := run(exec.Command("cp", "-a", d.Path+"/.", rootfs))
 		if err != nil {
 			return err
 		}
+		a, err := types.NewACIdentifier(fmt.Sprintf("debian.org/deb/%v", d.Name))
+		if err != nil {
+			return errorf(err.Error())
+		}
+		m.Annotations.Set(*a, fmt.Sprintf("%v/%v", d.Arch, d.Version))
 	}
-	if err := run(exec.Command("install", "-T", manifest, filepath.Join(idir, "manifest"))); err != nil {
-		return err
+	bytes, err := m.MarshalJSON()
+	if err != nil {
+		return errorf(err.Error())
+	}
+	if err := ioutil.WriteFile(filepath.Join(idir, "manifest"), bytes, 0644); err != nil {
+		return errorf(err.Error())
 	}
 	if err := run(exec.Command("actool", "build", "-overwrite", idir, image)); err != nil {
 		return err
@@ -84,10 +104,10 @@ func createACI(dir string, fs map[string]string, image, manifest string) error {
 	return nil
 }
 
-func download(pkg, dir string, done map[string]string) error {
+func download(pkg, dir string, done map[string]*deb) error {
 	log.Printf("downloading %v to %v", pkg, dir)
 
-	if done[pkg] != "" {
+	if done[pkg] != nil {
 		log.Printf("%v already downloaded, returning", pkg)
 		return nil
 	}
@@ -107,19 +127,35 @@ func download(pkg, dir string, done map[string]string) error {
 	if err != nil || len(matches) != 1 {
 		return errorf("unexpected: %v %v", err, matches)
 	}
-	deb := matches[0]
+	debName := matches[0]
 	// now unpack the archive to the folder
 	err = run(exec.Command(
-		"dpkg-deb", "-x", deb, filepath.Join(tdir, "out")))
+		"dpkg-deb", "-x", debName, filepath.Join(tdir, "out")))
 	if err != nil {
 		return err
 	}
-	done[pkg] = filepath.Join(tdir, "out")
+
+	arch, err := output("dpkg-deb", "-f", debName, "Architecture")
+	if err != nil {
+		return err
+	}
+
+	ver, err := output("dpkg-deb", "-f", debName, "Version")
+	if err != nil {
+		return err
+	}
+
+	done[pkg] = &deb{
+		Name:    pkg,
+		Path:    filepath.Join(tdir, "out"),
+		Arch:    arch,
+		Version: ver,
+	}
 
 	// now list all dependencies
-	out, err := exec.Command("dpkg-deb", "-f", deb, "Depends").CombinedOutput()
+	out, err := output("dpkg-deb", "-f", debName, "Depends")
 	if err != nil {
-		return errorf("%v: %v", out, err.Error())
+		return err
 	}
 	deps := parseDeps(string(out))
 	if len(deps) != 0 {
@@ -183,6 +219,14 @@ func (e *Err) Error() string {
 	return fmt.Sprintf("[%v:%v] %v", e.File, e.Line, e.Message)
 }
 
+func output(cmd string, args ...string) (string, error) {
+	out, err := exec.Command(cmd, args...).CombinedOutput()
+	if err != nil {
+		return "", errorf("%v: %v", out, err.Error())
+	}
+	return strings.TrimSpace(string(out)), nil
+}
+
 func run(cmd *exec.Cmd) error {
 	log.Printf("run: %v %v", cmd.Path, cmd.Args)
 	stdout, err := cmd.StdoutPipe()
@@ -196,4 +240,11 @@ func run(cmd *exec.Cmd) error {
 	go io.Copy(os.Stdout, stdout)
 	go io.Copy(os.Stderr, stderr)
 	return cmd.Run()
+}
+
+type deb struct {
+	Name    string
+	Path    string
+	Version string
+	Arch    string
 }

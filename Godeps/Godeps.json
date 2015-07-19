@@ -1,0 +1,31 @@
+{
+	"ImportPath": "github.com/klizhentas/deb2aci",
+	"GoVersion": "go1.4.2",
+	"Packages": [
+		"."
+	],
+	"Deps": [
+		{
+			"ImportPath": "github.com/GoogleCloudPlatform/kubernetes/pkg/api/resource",
+			"Comment": "v0.16.1-271-g86751e8",
+			"Rev": "86751e8c90a3c0e852afb78d26cb6ba8cdbc37ba"
+		},
+		{
+			"ImportPath": "github.com/appc/spec/schema",
+			"Comment": "v0.6.1-10-g806b17c",
+			"Rev": "806b17c86ba5e5d595fca3f7ed339c8a22fb46c3"
+		},
+		{
+			"ImportPath": "github.com/coreos/go-semver/semver",
+			"Rev": "568e959cd89871e61434c1143528d9162da89ef2"
+		},
+		{
+			"ImportPath": "github.com/spf13/pflag",
+			"Rev": "67cbc198fd11dab704b214c1e629a97af392c085"
+		},
+		{
+			"ImportPath": "speter.net/go/exp/math/dec/inf",
+			"Rev": "42ca6cd68aa922bc3f32f1e056e61b65945d9ad7"
+		}
+	]
+}
