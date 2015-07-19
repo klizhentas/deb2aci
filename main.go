@@ -85,11 +85,17 @@ func createACI(dir string, fs map[string]*deb, image string, m *schema.ImageMani
 		if err != nil {
 			return err
 		}
-		a, err := types.NewACIdentifier(fmt.Sprintf("debian.org/deb/%v", d.Name))
+		i, err := types.SanitizeACIdentifier(
+			fmt.Sprintf("debian.org/deb/%v", d.Name))
 		if err != nil {
 			return errorf(err.Error())
 		}
-		m.Annotations.Set(*a, fmt.Sprintf("%v/%v", d.Arch, d.Version))
+		a, err := types.NewACIdentifier(i)
+		if err != nil {
+			return errorf(err.Error())
+		}
+		m.Annotations.Set(
+			*a, fmt.Sprintf("%v/%v", d.Arch, d.Version))
 	}
 	bytes, err := m.MarshalJSON()
 	if err != nil {
