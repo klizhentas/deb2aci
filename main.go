@@ -1,6 +1,7 @@
 package main
 
 import (
+	"flag"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -15,23 +16,49 @@ import (
 	"github.com/klizhentas/deb2aci/Godeps/_workspace/src/github.com/appc/spec/schema/types"
 )
 
+type pkgs []string
+
+func (p *pkgs) String() string {
+	return fmt.Sprintf("%v", *p)
+}
+
+func (p *pkgs) Set(value string) error {
+	*p = append(*p, value)
+	return nil
+}
+
 func main() {
+	var pkgs pkgs
+	flag.Var(&pkgs, "pkg", "list of packages to download")
+
+	var image string
+	flag.StringVar(&image, "image", "", "image name")
+
+	var manifestPath string
+	flag.StringVar(&manifestPath, "manifest", "", "manifest")
+
 	if len(os.Args) < 3 {
-		log.Fatalf("deb2aci: package manifest")
+		log.Fatalf("deb2aci: package package package manifest")
 		return
 	}
-	pkg := os.Args[1]
+	flag.Parse()
+	if len(pkgs) == 0 {
+		log.Fatalf("supply at least one package")
+	}
+	if len(image) == 0 {
+		log.Fatalf("provide an image name")
+	}
 
-	log.Printf("deb2aci: will convert package %v", pkg)
-	image, err := filepath.Abs(fmt.Sprintf("./%v.aci", pkg))
+	log.Printf("deb2aci: will convert packages %v", pkgs)
+	image, err := filepath.Abs(fmt.Sprintf("./%v.aci", pkgs[0]))
 	if err != nil {
 		log.Fatalf("err: %v", err)
 	}
-	manifest, err := readManifest(os.Args[2])
+	manifest, err := readManifest(manifestPath)
 	if err != nil {
 		log.Fatalf(err.Error())
 	}
-	if err := convert(pkg, image, manifest); err != nil {
+	if err := convert(pkgs, image, manifest); err != nil {
 		log.Fatalf("deb2aci: ERROR: %v", err)
 	}
 	log.Printf("deb2aci: here you go: %v", image)
@@ -49,10 +76,7 @@ func readManifest(path string) (*schema.ImageManifest, error) {
 	return &i, nil
 }
 
-func convert(pkg, image string, manifest *schema.ImageManifest) error {
-	if pkg == "" || image == "" {
-		return errorf("image name and package name can not be empty")
-	}
+func convert(pkgs []string, image string, manifest *schema.ImageManifest) error {
 	dir, err := ioutil.TempDir("", "deb2aci")
 	if err != nil {
 		return err
@@ -65,9 +89,10 @@ func convert(pkg, image string, manifest *schema.ImageManifest) error {
 	}()
 
 	fs := make(map[string]*deb)
-
-	if err := download(pkg, dir, fs); err != nil {
-		return err
+	for _, pkg := range pkgs {
+		if err := download(pkg, dir, fs); err != nil {
+			return err
+		}
 	}
 	return createACI(dir, fs, image, manifest)
 }

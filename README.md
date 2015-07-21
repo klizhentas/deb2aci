@@ -7,7 +7,7 @@ It remembers each dependency in annotation to the resulting image manifest.
 
 ```
 # outputs nginx.aci
-deb2aci nginx nginx.manifest
+deb2aci -pkg nginx -manifest nginx.manifest -image nginx.aci
 ```
 
 The image manifest will keep track of what packages are part of it:
