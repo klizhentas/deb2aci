@@ -49,8 +49,9 @@ func main() {
 		log.Fatalf("provide an image name")
 	}
 
-	log.Printf("deb2aci: will convert packages %v", pkgs)
-	image, err := filepath.Abs(fmt.Sprintf("./%v.aci", pkgs[0]))
+	log.Printf(
+		"deb2aci: will convert packages %v and archive to %v", pkgs, image)
+	image, err := filepath.Abs(image)
 	if err != nil {
 		log.Fatalf("err: %v", err)
 	}
